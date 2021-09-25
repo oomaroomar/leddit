@@ -1,13 +1,15 @@
 import { Box, Button, Flex, Link } from '@chakra-ui/react'
-import React from 'react'
 import NextLink from 'next/link'
+import React, { ReactElement } from 'react'
 import { useLogoutMutation, useMeQuery } from '../generated/graphql'
-import { ReactElement } from 'react'
 
 interface NavBarProps {}
 
 export const NavBar: React.FC<NavBarProps> = ({}) => {
-  const [{ data, fetching }] = useMeQuery()
+  const [{ data, fetching }] = useMeQuery({
+    // pause: isServer(),
+  })
+  // Would stop an unneccesary request but I don't want the client and server to be out of sync { pause: isServer() }
   const [{ fetching: logoutFetching }, logout] = useLogoutMutation()
   let body: ReactElement | null = null
   console.log(data)

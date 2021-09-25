@@ -12,10 +12,15 @@ import {
   Resolver,
 } from 'type-graphql'
 import { Session } from 'express-session'
-import { COOKIE_NAME } from '../constants'
+import { COOKIE_NAME, FORGOT_PASSWORD_PREFIX } from '../constants'
+import { validateRegister } from '../utils/validateRegister'
+import { sendEmail } from '../utils/sendEmail'
+import { v4 } from 'uuid'
 
 @InputType()
-class UsernamePasswordInput {
+export class UsernamePasswordInput {
+  @Field()
+  email: string
   @Field()
   username: string
   @Field()
@@ -23,7 +28,7 @@ class UsernamePasswordInput {
 }
 
 @ObjectType()
-class FieldError {
+export class FieldError {
   @Field()
   field: string
   @Field()
@@ -63,29 +68,15 @@ export class UserResolver {
     @Arg('options') options: UsernamePasswordInput,
     @Ctx() { em, req }: MyContext
   ): Promise<UserResponse> {
-    if (options.username.length <= 2)
-      return {
-        errors: [
-          {
-            field: 'username',
-            message: 'username must be 2 characters or longer',
-          },
-        ],
-      }
-    if (options.password.length <= 3)
-      return {
-        errors: [
-          {
-            field: 'password',
-            message: 'password must be 3 characters or longer',
-          },
-        ],
-      }
-
+    const errors = validateRegister(options)
+    if (errors) {
+      return { errors }
+    }
     const hashedPassword = await argon2.hash(options.password)
     const user = em.create(User, {
       username: options.username,
       password: hashedPassword,
+      email: options.email,
     })
     try {
       await em.persistAndFlush(user)
@@ -112,20 +103,26 @@ export class UserResolver {
 
   @Mutation(() => UserResponse)
   async login(
-    @Arg('options') options: UsernamePasswordInput,
+    @Arg('usernameOrEmail') usernameOrEmail: string,
+    @Arg('password') password: string,
     @Ctx() { em, req }: MyContext
   ): Promise<UserResponse> {
-    const user = await em.findOne(User, { username: options.username })
+    const user = await em.findOne(
+      User,
+      usernameOrEmail.includes('@')
+        ? { email: usernameOrEmail }
+        : { username: usernameOrEmail }
+    )
     if (!user)
       return {
         errors: [
           {
-            field: 'username',
-            message: "username doesn't exist",
+            field: 'usernameOrEmail',
+            message: 'user does not exist',
           },
         ],
       }
-    const valid = await argon2.verify(user.password, options.password)
+    const valid = await argon2.verify(user.password, password)
     if (!valid)
       return {
         errors: [
@@ -157,6 +154,88 @@ export class UserResolver {
         resolve(true)
       })
     )
+  }
+
+  @Mutation(() => UserResponse)
+  async changePassword(
+    @Arg('token') token: string,
+    @Arg('newPassword') newPassword: string,
+    @Ctx() { redis, em, req }: MyContext
+  ): Promise<UserResponse> {
+    if (newPassword.length < 3)
+      return {
+        errors: [
+          {
+            field: 'password',
+            message: 'password must be 3 characters or longer',
+          },
+        ],
+      }
+
+    const key = FORGOT_PASSWORD_PREFIX + token
+    const userId = await redis.get(key)
+    if (!userId) {
+      return {
+        errors: [
+          {
+            field: 'token',
+            message: 'token expired',
+          },
+        ],
+      }
+    }
+
+    const user = await em.findOne(User, { id: parseInt(userId) })
+
+    if (!user) {
+      return {
+        errors: [
+          {
+            field: 'token',
+            message: 'user does not exist',
+          },
+        ],
+      }
+    }
+
+    user.password = await argon2.hash(newPassword)
+    await em.persistAndFlush(user)
+
+    req.session.userId = user.id
+
+    redis.del(key)
+
+    return {
+      user,
+    }
+  }
+
+  @Mutation(() => Boolean)
+  async forgotPassword(
+    @Arg('email') email: string,
+    @Ctx() { em, redis }: MyContext
+  ) {
+    const user = await em.findOne(User, { email })
+    if (!user) {
+      // email not in db
+      return true
+    }
+
+    const token = v4()
+
+    await redis.set(
+      FORGOT_PASSWORD_PREFIX + token,
+      user.id,
+      'ex',
+      1000 * 60 * 60
+    ) // 1h
+
+    await sendEmail(
+      email,
+      `<a href="http://localhost:3000/change-password/${token}">reset password</a>`
+    )
+
+    return true
   }
 }
 
