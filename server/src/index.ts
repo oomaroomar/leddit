@@ -1,6 +1,5 @@
-import { MikroORM } from '@mikro-orm/core'
+import 'reflect-metadata'
 import { __prod__, PORT, COOKIE_NAME } from './constants'
-import microConfig from './mikro-orm.config'
 import express from 'express'
 import Redis from 'ioredis'
 import connectRedis from 'connect-redis'
@@ -12,17 +11,32 @@ import { PostResolver } from './resolvers/post'
 import { UserResolver } from './resolvers/user'
 import { MyContext } from './types'
 import cors from 'cors'
-import { sendEmail } from './utils/sendEmail'
+import { createConnection } from 'typeorm'
+import { Post } from './entities/Post'
+import { User } from './entities/User'
+import path from 'path'
+import { Upvote } from './entities/Upvote'
 
 const main = async () => {
-  sendEmail('bob@bob.com', 'Oh hello there')
-  const orm = await MikroORM.init(microConfig)
-  await orm.getMigrator().up()
+  const conn = await createConnection({
+    type: 'postgres',
+    database: 'leddit2',
+    username: 'postgres',
+    password: 'postgres',
+    logging: true,
+    migrations: [path.join(__dirname, './migrations/*')],
+    synchronize: true,
+    entities: [User, Post, Upvote],
+  })
+
+  // await conn.runMigrations()
+
+  // await Post.delete({})
+
+  const app = express()
 
   const RedisStore = connectRedis(session)
   const redis = new Redis()
-
-  const app = express()
 
   app.use(
     cors({
@@ -55,7 +69,7 @@ const main = async () => {
       resolvers: [HelloResolver, PostResolver, UserResolver],
       validate: false,
     }),
-    context: ({ req, res }): MyContext => ({ em: orm.em, req, res, redis }),
+    context: ({ req, res }): MyContext => ({ req, res, redis }),
   })
 
   apolloServer.applyMiddleware({

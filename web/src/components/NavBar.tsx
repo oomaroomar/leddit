@@ -1,4 +1,4 @@
-import { Box, Button, Flex, Link } from '@chakra-ui/react'
+import { Box, Button, Flex, Heading, Link } from '@chakra-ui/react'
 import NextLink from 'next/link'
 import React, { ReactElement } from 'react'
 import { useLogoutMutation, useMeQuery } from '../generated/graphql'
@@ -6,13 +6,9 @@ import { useLogoutMutation, useMeQuery } from '../generated/graphql'
 interface NavBarProps {}
 
 export const NavBar: React.FC<NavBarProps> = ({}) => {
-  const [{ data, fetching }] = useMeQuery({
-    // pause: isServer(),
-  })
-  // Would stop an unneccesary request but I don't want the client and server to be out of sync { pause: isServer() }
   const [{ fetching: logoutFetching }, logout] = useLogoutMutation()
+  const [{ data, fetching }] = useMeQuery()
   let body: ReactElement | null = null
-  console.log(data)
 
   if (fetching) {
     // let body be null
@@ -29,8 +25,13 @@ export const NavBar: React.FC<NavBarProps> = ({}) => {
     )
   } else {
     body = (
-      <Box>
-        <Box>{data.me.username}</Box>
+      <Flex align='center'>
+        <NextLink href='/create-post'>
+          <Button as={Link} mr='4'>
+            create post
+          </Button>
+        </NextLink>
+        <Box mr='2'>{data.me.username}</Box>
         <Button
           onClick={() => {
             logout()
@@ -40,13 +41,20 @@ export const NavBar: React.FC<NavBarProps> = ({}) => {
         >
           Logout
         </Button>
-      </Box>
+      </Flex>
     )
   }
 
   return (
-    <Flex p={4} ml={'auto'} bg='blue.200'>
-      <Box ml={'auto'}>{body}</Box>
+    <Flex zIndex={1} position='sticky' top={0} p={4} ml={'auto'} bg='blue.200'>
+      <Flex flex='1' margin='auto' maxW='800' align='center'>
+        <NextLink href='/'>
+          <Link mx={4}>
+            <Heading fontSize='2xl'>Leddit</Heading>
+          </Link>
+        </NextLink>
+        <Box ml={'auto'}>{body}</Box>
+      </Flex>
     </Flex>
   )
 }
