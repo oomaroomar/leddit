@@ -14,10 +14,20 @@ import {
   DeletePostMutationVariables,
 } from '../generated/graphql'
 import { pipe, tap } from 'wonka'
-import { cacheExchange, Resolver } from '@urql/exchange-graphcache'
+import { cacheExchange, Resolver, Cache } from '@urql/exchange-graphcache'
 import { betterUpdateQuery } from './betterUpdateQuery'
 import Router from 'next/router'
 import { isServer } from './isServer'
+
+const invalidateAllPosts = (cache: Cache) => {
+  const allFields = cache.inspectFields('Query')
+  const fieldInfos = allFields.filter(
+    info => info.fieldName === 'posts'
+  )
+  fieldInfos.forEach(fi =>
+    cache.invalidate('Query', 'posts', fi.arguments)
+  )
+}
 
 const errorExchange: Exchange =
   ({ forward }) =>
@@ -72,7 +82,7 @@ export const createUrqlClient = (ssrExchange: any, ctx) => {
   let cookie = ''
 
   if (isServer()) {
-    cookie = ctx.req.headers.cookie
+    cookie = ctx?.req?.headers?.cookie
   }
 
   return {
@@ -125,13 +135,7 @@ export const createUrqlClient = (ssrExchange: any, ctx) => {
               }
             },
             createPost: (_result, _args, cache, _info) => {
-              const allFields = cache.inspectFields('Query')
-              const fieldInfos = allFields.filter(
-                info => info.fieldName === 'posts'
-              )
-              fieldInfos.forEach(fi =>
-                cache.invalidate('Query', 'posts', fi.arguments)
-              )
+              invalidateAllPosts(cache)
             },
             login: (result, _args, cache, _info) => {
               betterUpdateQuery<LoginMutation, MeQuery>(
@@ -150,6 +154,7 @@ export const createUrqlClient = (ssrExchange: any, ctx) => {
                   }
                 }
               )
+              invalidateAllPosts(cache)
             },
             register: (result, _args, cache, _info) => {
               betterUpdateQuery<RegisterMutation, MeQuery>(

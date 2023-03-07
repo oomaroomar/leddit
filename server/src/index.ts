@@ -16,6 +16,7 @@ import { Post } from './entities/Post'
 import { User } from './entities/User'
 import path from 'path'
 import { Upvote } from './entities/Upvote'
+import nodemailer from 'nodemailer'
 
 const main = async () => {
   const conn = await createConnection({
